@@ -29,8 +29,9 @@ const ruleNoteEl = document.getElementById('rule-note');
 
 const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-/** 当前生效的时区：来自 ?tz=、localStorage 或浏览器默认，见 resolveTimeZone。 */
+/** 当前生效的时区与它是否来自显式选择（?tz=、localStorage 或下拉框），见 resolveTimeZone。 */
 let activeTimeZone = browserTimeZone;
+let tzIsExplicit = false;
 
 /** 下拉框里的常用时区（第一个「浏览器时区」选项动态生成，值是空串）。 */
 const TZ_CHOICES = [
@@ -105,16 +106,20 @@ function persistTimeZone(value) {
 /**
  * 时区解析顺序：有效的 ?tz= > 有效的 localStorage > 浏览器时区。
  * 无效的 ?tz= 给一条提示后继续回退；无效的存储值静默忽略。
+ * @returns {{ timeZone: string, explicit: boolean }}
+ *   explicit - 是否来自显式选择（即使恰好等于浏览器时区也算）。
  */
 function resolveTimeZone() {
   const raw = new URLSearchParams(window.location.search).get('tz');
   if (raw !== null && raw !== '') {
-    if (isValidTimeZone(raw)) return raw;
+    if (isValidTimeZone(raw)) return { timeZone: raw, explicit: true };
     showNote(`已忽略无效的 ?tz 参数（${raw}）`);
   }
   const stored = readStoredTimeZone();
-  if (stored && isValidTimeZone(stored)) return stored;
-  return browserTimeZone;
+  if (stored && isValidTimeZone(stored)) {
+    return { timeZone: stored, explicit: true };
+  }
+  return { timeZone: browserTimeZone, explicit: false };
 }
 
 /** 填充时区下拉框并选中当前生效项（不在常用列表里时追加一个选项）。 */
@@ -123,9 +128,9 @@ function buildTimeZoneOptions() {
     { value: '', label: `浏览器时区（${browserTimeZone}）` },
     ...TZ_CHOICES.map((tz) => ({ value: tz, label: tz })),
   ];
-  const knownChoice =
-    activeTimeZone === browserTimeZone || TZ_CHOICES.includes(activeTimeZone);
-  if (!knownChoice) options.push({ value: activeTimeZone, label: activeTimeZone });
+  if (tzIsExplicit && !TZ_CHOICES.includes(activeTimeZone)) {
+    options.push({ value: activeTimeZone, label: activeTimeZone });
+  }
 
   tzSelectEl.replaceChildren(
     ...options.map(({ value, label }) => {
@@ -135,7 +140,9 @@ function buildTimeZoneOptions() {
       return option;
     }),
   );
-  tzSelectEl.value = activeTimeZone === browserTimeZone ? '' : activeTimeZone;
+  // 显式选择的时区（含存储/参数恰好等于浏览器时区）选中同名选项；
+  // 只有没有覆盖、或用户主动选了“浏览器时区”时才选空串那一项。
+  tzSelectEl.value = tzIsExplicit ? activeTimeZone : '';
 }
 
 /** 去掉 URL 里的 tz 参数（保留 now 等），让刷新后以 localStorage 为准。 */
@@ -149,6 +156,7 @@ function stripTimeZoneParam() {
 tzSelectEl.addEventListener('change', () => {
   const { value } = tzSelectEl;
   activeTimeZone = value === '' ? browserTimeZone : value;
+  tzIsExplicit = value !== '';
   persistTimeZone(value);
   stripTimeZoneParam();
   render(); // 不刷新页面，立即重渲染时间表与「下一次切换」
@@ -290,7 +298,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 readFakeClockParam();
-activeTimeZone = resolveTimeZone();
+const resolvedTimeZone = resolveTimeZone();
+activeTimeZone = resolvedTimeZone.timeZone;
+tzIsExplicit = resolvedTimeZone.explicit;
 buildTimeZoneOptions();
 renderRuleText();
 tick();

@@ -254,11 +254,14 @@ body.is-offpeak .countdown-value {
   overflow: hidden;
 }
 
+/* 每行三列：日期（定宽，各行对齐）/ 时段（弹性）/ 徽标（仅当前行）。
+   列宽用 minmax(7.5em, max-content)：最宽的日期（“12月31日 周四”）也在
+   7.5em 之内，所以每行都取到相同的 7.5em，时段列从同一 x 起步。 */
 .week-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(7.5em, max-content) 1fr auto;
+  column-gap: 0.75rem;
   align-items: baseline;
-  gap: 0.25rem 0.75rem;
   padding: 0.45rem 0.6rem;
 }
 
@@ -271,7 +274,6 @@ body.is-offpeak .countdown-value {
 }
 
 .week-date {
-  flex: none;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -280,11 +282,14 @@ body.is-offpeak .countdown-value {
   font-weight: 700;
 }
 
+/* 只允许在段与段的“、”之间换行；单个时段整体不断行 */
 .week-hours {
-  flex: 1;
-  min-width: 0; /* 长时段文案在窄屏内换行而不是横向溢出 */
+  min-width: 0;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+}
+
+.week-segment {
+  white-space: nowrap;
 }
 
 .week-hours.is-empty {
@@ -301,10 +306,8 @@ body.is-offpeak .countdown-value {
   padding: 0 0.3em;
 }
 
-/* 「当前」徽标在时段格子之外，时段单元格的 textContent 保持纯文案 */
+/* 「当前」徽标在时段格子之外（第三列），时段单元格的 textContent 保持纯文案 */
 .week-badge {
-  flex: none;
-  margin-left: auto;
   color: var(--peak-text);
   background: var(--peak-bg);
   border: 1px solid var(--peak-border);
