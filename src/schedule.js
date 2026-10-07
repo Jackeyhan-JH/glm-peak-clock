@@ -107,6 +107,7 @@ function parseDateKey(key) {
  * 先用该日 UTC 正午的偏移做初猜，再迭代校正到不动点，
  * 能正确处理 23/25 小时的日（如纽约 2026-03-08 / 2026-11-01、伦敦 2026-10-25）。
  * 个别在午夜切换导致 00:00 不存在的时区，返回当天第一个存在的时刻。
+ * 日/月可以越界（如 12 月 32 日 = 次年 1 月 1 日），先按 Date.UTC 归一。
  * @param {number} year
  * @param {number} month 月份（1–12）
  * @param {number} day
@@ -114,15 +115,23 @@ function parseDateKey(key) {
  * @returns {Date}
  */
 export function startOfZonedDay(year, month, day, timeZone) {
-  const dayStartUtc = Date.UTC(year, month - 1, day);
-  const key = `${year}-${pad2(month)}-${pad2(day)}`;
+  // 越界输入（如 weekSchedule 里的 day + i）先归一成真实日期，
+  // 否则下方兜底循环的目标 key 会指到一个不存在的日子。
+  const normalized = new Date(Date.UTC(year, month - 1, day));
+  const dayStartUtc = normalized.getTime();
+  const key = `${normalized.getUTCFullYear()}-${pad2(
+    normalized.getUTCMonth() + 1,
+  )}-${pad2(normalized.getUTCDate())}`;
+
   let ts = dayStartUtc - zoneOffsetMs(dayStartUtc + 12 * HOUR_MS, timeZone);
   for (let round = 0; round < 4; round++) {
     const next = dayStartUtc - zoneOffsetMs(ts, timeZone);
     if (next === ts) break;
     ts = next;
   }
-  // 兜底：00:00 不存在时迭代会在切换点两侧来回，顺延到仍属于该日的时刻为止。
+  // 兜底：00:00 不存在（午夜切换的时区）时迭代会在切换点两侧震荡。
+  // 每步 30 分钟向目标日靠近，最多 ±24 小时；一旦进入目标日立即停止，
+  // 结果只会是目标日本身或其第一个存在的时刻，不会落到别的日子。
   for (let round = 0; round < 48; round++) {
     const current = zonedDateKey(new Date(ts), timeZone);
     if (current === key) break;
@@ -177,6 +186,7 @@ export function weekSchedule(now, timeZone, days = 7) {
   const firstKey = zonedDateKey(now, timeZone);
   const [year, month, day] = parseDateKey(firstKey);
 
+  // day + i 会越过月末/年末（如 12-32），startOfZonedDay 内部负责归一
   const dayStartTs = [];
   for (let i = 0; i < count; i++) {
     dayStartTs.push(startOfZonedDay(year, month, day + i, timeZone).getTime());

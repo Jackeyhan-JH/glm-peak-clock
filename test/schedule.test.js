@@ -7,6 +7,7 @@ import {
   weekSchedule,
   zonedDateKey,
 } from '../src/schedule.js';
+import { peakWindows } from '../src/peak.js';
 
 /** weekSchedule → { "YYYY-MM-DD": formatSegments(当天) }，便于按日期断言。 */
 function hoursByDate(schedule) {
@@ -314,6 +315,77 @@ test('weekSchedule 的 days 参数生效', () => {
   assert.equal(schedule[2].date, '2026-10-10');
 });
 
+// ---------- 跨月/跨年边界（回归：day 越界导致日期重复或缺天） ----------
+
+test('洛杉矶跨年周（从 2026-12-27 周日起）：7 天日期连续、无重复', () => {
+  const schedule = weekSchedule(
+    new Date('2026-12-27T20:00:00Z'),
+    'America/Los_Angeles',
+  );
+  assert.deepEqual(
+    schedule.map(
+      (d) => `${d.date} ${d.weekdayLabel} ${formatSegments(d.segments)}`,
+    ),
+    [
+      '2026-12-27 周日 22:00–24:00',
+      '2026-12-28 周一 00:00–02:00、22:00–24:00',
+      '2026-12-29 周二 00:00–02:00、22:00–24:00',
+      '2026-12-30 周三 00:00–02:00、22:00–24:00',
+      '2026-12-31 周四 00:00–02:00、22:00–24:00',
+      '2027-01-01 周五 00:00–02:00',
+      '2027-01-02 周六 全天非高峰',
+    ],
+  );
+});
+
+test('北京跨月周（从 2026-10-28 周三起）：10-31 之后直接到 11-01、11-02', () => {
+  const schedule = weekSchedule(
+    new Date('2026-10-28T12:00:00Z'),
+    'Asia/Shanghai',
+  );
+  assert.deepEqual(
+    schedule.map(
+      (d) => `${d.date} ${d.weekdayLabel} ${formatSegments(d.segments)}`,
+    ),
+    [
+      '2026-10-28 周三 14:00–18:00',
+      '2026-10-29 周四 14:00–18:00',
+      '2026-10-30 周五 14:00–18:00',
+      '2026-10-31 周六 全天非高峰',
+      '2026-11-01 周日 全天非高峰',
+      '2026-11-02 周一 14:00–18:00',
+      '2026-11-03 周二 14:00–18:00',
+    ],
+  );
+});
+
+test('startOfZonedDay 归一越界的日/月：12 月 32 日 = 次年 1 月 1 日', () => {
+  for (const timeZone of [
+    'Asia/Shanghai',
+    'America/New_York',
+    'America/Los_Angeles',
+    'Pacific/Honolulu',
+    'Pacific/Chatham',
+  ]) {
+    assert.equal(
+      startOfZonedDay(2026, 12, 32, timeZone).getTime(),
+      startOfZonedDay(2027, 1, 1, timeZone).getTime(),
+      timeZone,
+    );
+    assert.equal(
+      startOfZonedDay(2026, 13, 1, timeZone).getTime(),
+      startOfZonedDay(2027, 1, 1, timeZone).getTime(),
+      timeZone,
+    );
+    // 平年 2 月 29/30 日归一到 3 月
+    assert.equal(
+      startOfZonedDay(2027, 2, 30, timeZone).getTime(),
+      startOfZonedDay(2027, 3, 2, timeZone).getTime(),
+      timeZone,
+    );
+  }
+});
+
 // ---------- formatSegments ----------
 
 test('formatSegments 用 en dash 连接起止，多段用 、 连接', () => {
@@ -335,4 +407,104 @@ test('formatSegments 用 en dash 连接起止，多段用 、 连接', () => {
 test('formatSegments 没有高峰时显示 全天非高峰', () => {
   assert.equal(formatSegments([]), '全天非高峰');
   assert.equal(formatSegments(undefined), '全天非高峰');
+});
+
+// ---------- 属性测试：2026 全年 × 多时区 ----------
+
+const WEEKDAY_ORDER = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** "YYYY-MM-DD" → [year, month(1 起), day]。 */
+function keyParts(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+test('属性测试：7 行日期连续且首行是“今天”、星期连续、段都落在本地日内、段总时长与 peakWindows 重叠一致', () => {
+  const zones = [
+    'Asia/Shanghai',
+    'America/New_York',
+    'America/Los_Angeles',
+    'Pacific/Honolulu',
+    'Europe/London',
+    'Asia/Tokyo',
+    'Asia/Kolkata',
+    'Australia/Lord_Howe',
+    'Pacific/Chatham',
+    'America/St_Johns',
+  ];
+  for (const timeZone of zones) {
+    for (let dayOfYear = 0; dayOfYear < 365; dayOfYear++) {
+      // 每天 UTC 正午取一个 now，全年覆盖所有 DST 切换与月末/年末边界
+      const now = new Date(Date.UTC(2026, 0, 1 + dayOfYear, 12));
+      const where = `${timeZone} ${now.toISOString()}`;
+      const schedule = weekSchedule(now, timeZone);
+
+      assert.equal(schedule.length, 7, `${where} 行数`);
+      assert.equal(
+        schedule[0].date,
+        zonedDateKey(now, timeZone),
+        `${where} 首行日期`,
+      );
+
+      let prevCalendarTs = 0;
+      let prevWeekday = -1;
+      for (const day of schedule) {
+        const [y, m, d] = keyParts(day.date);
+        const calendarTs = Date.UTC(y, m - 1, d);
+        if (prevCalendarTs) {
+          assert.equal(
+            calendarTs - prevCalendarTs,
+            86_400_000,
+            `${where} ${day.date} 与前一行日期不连续`,
+          );
+          const weekday = WEEKDAY_ORDER.indexOf(day.weekdayLabel);
+          assert.equal(
+            (weekday - prevWeekday + 7) % 7,
+            1,
+            `${where} ${day.date} 星期不连续`,
+          );
+          prevWeekday = weekday;
+        } else {
+          prevWeekday = WEEKDAY_ORDER.indexOf(day.weekdayLabel);
+        }
+        prevCalendarTs = calendarTs;
+
+        // 每段都在该行日期的本地日之内
+        const dayStartTs = startOfZonedDay(y, m, d, timeZone).getTime();
+        const dayEndTs = startOfZonedDay(y, m, d + 1, timeZone).getTime();
+        for (const segment of day.segments) {
+          const s = segment.start.getTime();
+          const e = segment.end.getTime();
+          assert.ok(
+            s >= dayStartTs && e <= dayEndTs && s < e,
+            `${where} ${day.date} 段 ${s}–${e} 越出本地日 ${dayStartTs}–${dayEndTs}`,
+          );
+        }
+      }
+
+      // 段总时长 = peakWindows 与整周范围 [首日 0 点, 第 8 天 0 点) 的重叠总时长
+      const [y0, m0, d0] = keyParts(schedule[0].date);
+      const rangeStartTs = startOfZonedDay(y0, m0, d0, timeZone).getTime();
+      const rangeEndTs = startOfZonedDay(y0, m0, d0 + 7, timeZone).getTime();
+      let expectedMs = 0;
+      for (const w of peakWindows(
+        new Date(rangeStartTs),
+        new Date(rangeEndTs),
+      )) {
+        const s = Math.max(w.start.getTime(), rangeStartTs);
+        const e = Math.min(w.end.getTime(), rangeEndTs);
+        if (s < e) expectedMs += e - s;
+      }
+      const actualMs = schedule.reduce(
+        (sum, day) =>
+          sum +
+          day.segments.reduce(
+            (s, seg) => s + seg.end.getTime() - seg.start.getTime(),
+            0,
+          ),
+        0,
+      );
+      assert.equal(actualMs, expectedMs, `${where} 段总时长`);
+    }
+  }
 });
