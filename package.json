@@ -4,6 +4,9 @@
   "private": true,
   "description": "GLM Coding Plan 错峰钟：高峰期判断与切换倒计时",
   "type": "module",
+  "bin": {
+    "peak-clock": "bin/peak-clock.mjs"
+  },
   "scripts": {
     "test": "node --test"
   }

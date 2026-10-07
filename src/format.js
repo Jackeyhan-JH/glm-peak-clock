@@ -59,6 +59,22 @@ export function formatDuration(totalSeconds) {
 }
 
 /**
+ * 距离切换的毫秒数 → 整分钟粒度的中文时长（向下取整，#5 命令行用）：
+ * "2 天 20 小时 0 分" / "3 小时 12 分" / "5 分"，不足 1 分钟为 "不到 1 分"。
+ * 与 formatDuration（HH:MM:SS 网页倒计时）互补，输入直接用 msUntilSwitch。
+ */
+export function formatDurationMinutes(ms) {
+  const totalMinutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (totalMinutes === 0) return '不到 1 分';
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days} 天 ${hours} 小时 ${minutes} 分`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+  return `${minutes} 分`;
+}
+
+/**
  * 「下一次切换」的三个展示片段。app.js 把它们渲染成独立的 <span>，
  * 拼起来的 textContent 与 formatNextSwitch 的返回值完全一致。
  */

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   describeRules,
   formatDuration,
+  formatDurationMinutes,
   formatNextSwitch,
   formatNextSwitchBeijing,
   formatNextSwitchLocal,
@@ -36,6 +37,35 @@ test('formatDuration 不足一天显示 HH:MM:SS', () => {
 test('formatDuration 满 24 小时显示 N 天 HH:MM:SS', () => {
   assert.equal(formatDuration(86400), '1 天 00:00:00');
   assert.equal(formatDuration(2 * 86400 + 20 * 3600), '2 天 20:00:00');
+});
+
+// ---------- CLI 用的整分钟时长（formatDurationMinutes） ----------
+
+test('formatDurationMinutes 不足 1 分钟为“不到 1 分”（含 0 与负数）', () => {
+  assert.equal(formatDurationMinutes(0), '不到 1 分');
+  assert.equal(formatDurationMinutes(59_999), '不到 1 分');
+  assert.equal(formatDurationMinutes(-1), '不到 1 分');
+});
+
+test('formatDurationMinutes 不足 1 小时只有“M 分”（向下取整）', () => {
+  assert.equal(formatDurationMinutes(60_000), '1 分');
+  assert.equal(formatDurationMinutes(5 * 60_000 + 59_999), '5 分');
+  assert.equal(formatDurationMinutes(59 * 60_000), '59 分');
+});
+
+test('formatDurationMinutes 满 1 小时为“H 小时 M 分”', () => {
+  assert.equal(formatDurationMinutes(3_600_000), '1 小时 0 分');
+  // 3 小时 12 分 59 秒 → 3 小时 12 分
+  assert.equal(
+    formatDurationMinutes(3 * 3_600_000 + 12 * 60_000 + 59_999),
+    '3 小时 12 分',
+  );
+});
+
+test('formatDurationMinutes 满 1 天为“D 天 H 小时 M 分”', () => {
+  assert.equal(formatDurationMinutes(86_400_000), '1 天 0 小时 0 分');
+  // 周五 18:00（北京）到下周一 14:00 共 68 小时
+  assert.equal(formatDurationMinutes(244_800_000), '2 天 20 小时 0 分');
 });
 
 // ---------- 下一次切换：双时区文案 ----------
