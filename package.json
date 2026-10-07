@@ -1,0 +1,10 @@
+{
+  "name": "glm-peak-clock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GLM Coding Plan 错峰钟：高峰期判断与切换倒计时",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
