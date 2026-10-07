@@ -1,0 +1,217 @@
+/**
+ * GLM 错峰钟 —— 系统字体、无网络请求；支持 prefers-color-scheme 深色模式。
+ * 高峰=红橙、非高峰=绿 的语义色写在 :root 变量里，body 上的 is-peak/is-offpeak 驱动。
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1f2328;
+  --muted: #57606a;
+  --border: #d8dee4;
+  --peak-text: #c2410c;
+  --peak-bg: #fff4ec;
+  --peak-border: #f6c8a8;
+  --offpeak-text: #1a7f37;
+  --offpeak-bg: #ecf8ef;
+  --offpeak-border: #b5dfbf;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --card: #161b22;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --border: #30363d;
+    --peak-text: #ff8a4c;
+    --peak-bg: #241708;
+    --peak-border: #5c3a1a;
+    --offpeak-text: #4ac063;
+    --offpeak-bg: #0d2013;
+    --offpeak-border: #1f4529;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    sans-serif;
+  line-height: 1.6;
+}
+
+.page {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.header {
+  text-align: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: clamp(0.8125rem, 3.2vw, 0.9375rem);
+}
+
+.clock-note {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 4%);
+}
+
+.card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---- 状态 ---- */
+
+.status-card {
+  text-align: center;
+}
+
+body.is-peak .status-card {
+  background: var(--peak-bg);
+  border-color: var(--peak-border);
+}
+
+body.is-offpeak .status-card {
+  background: var(--offpeak-bg);
+  border-color: var(--offpeak-border);
+}
+
+.status {
+  margin: 0;
+  font-size: clamp(2.25rem, 11vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+}
+
+.status.is-peak {
+  color: var(--peak-text);
+}
+
+.status.is-offpeak {
+  color: var(--offpeak-text);
+}
+
+/* ---- 倒计时 ---- */
+
+.countdown {
+  text-align: center;
+}
+
+.countdown-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(0.9375rem, 3.6vw, 1.0625rem);
+}
+
+.countdown-value {
+  margin: 0.25rem 0 0;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  font-size: clamp(2.5rem, 12.5vw, 4rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap; /* 始终单行；带天数时用更小字号，见 .has-days */
+}
+
+/* "2 天 20:00:00" 比 "20:00:00" 长，缩小一档保证 375px 下不折行、不溢出 */
+.countdown-value.has-days {
+  font-size: clamp(1.75rem, 8.5vw, 3rem);
+}
+
+body.is-peak .countdown-value {
+  color: var(--peak-text);
+}
+
+body.is-offpeak .countdown-value {
+  color: var(--offpeak-text);
+}
+
+/* ---- 下一次切换 ---- */
+
+.next-switch {
+  margin: 0;
+  font-size: clamp(1rem, 4vw, 1.125rem);
+}
+
+/* 本地时间与北京时间各为一个不断行的整体，只在 "· " 分隔处换行；
+   时区名过长放不下时才允许在其内部断行（overflow-wrap 兜底） */
+.next-when,
+.next-beijing {
+  white-space: nowrap;
+}
+
+.next-zone {
+  overflow-wrap: anywhere;
+}
+
+/* ---- 页脚 ---- */
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.footer p {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
