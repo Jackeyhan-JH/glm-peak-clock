@@ -169,7 +169,12 @@ body.is-offpeak .status-card {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  word-break: break-word;
+  white-space: nowrap; /* 始终单行；带天数时用更小字号，见 .has-days */
+}
+
+/* "2 天 20:00:00" 比 "20:00:00" 长，缩小一档保证 375px 下不折行、不溢出 */
+.countdown-value.has-days {
+  font-size: clamp(1.75rem, 8.5vw, 3rem);
 }
 
 body.is-peak .countdown-value {
@@ -185,7 +190,17 @@ body.is-offpeak .countdown-value {
 .next-switch {
   margin: 0;
   font-size: clamp(1rem, 4vw, 1.125rem);
-  overflow-wrap: anywhere; /* 长时区名（如 America/Argentina/…）在窄屏可换行 */
+}
+
+/* 本地时间与北京时间各为一个不断行的整体，只在 "· " 分隔处换行；
+   时区名过长放不下时才允许在其内部断行（overflow-wrap 兜底） */
+.next-when,
+.next-beijing {
+  white-space: nowrap;
+}
+
+.next-zone {
+  overflow-wrap: anywhere;
 }
 
 /* ---- 页脚 ---- */

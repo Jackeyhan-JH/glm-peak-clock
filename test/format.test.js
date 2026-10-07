@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  describeRules,
   formatDuration,
   formatNextSwitch,
   formatNextSwitchBeijing,
   formatNextSwitchLocal,
+  formatNextSwitchParts,
   remainingSeconds,
 } from '../src/format.js';
 
@@ -72,5 +74,46 @@ test('formatNextSwitch 组合本地与北京时间（timeZone 可由调用方指
   assert.equal(
     formatNextSwitch(switchThu, 'Asia/Shanghai'),
     '10月8日 周四 14:00（Asia/Shanghai）· 北京时间 周四 14:00',
+  );
+});
+
+test('分部件拼接与 formatNextSwitch 完全一致（页面 textContent 的保证）', () => {
+  const d = new Date('2026-10-09T16:30:00Z');
+  const parts = formatNextSwitchParts(d, 'Pacific/Honolulu');
+  assert.equal(
+    `${parts.localWhen}${parts.localZone}· ${parts.beijing}`,
+    formatNextSwitch(d, 'Pacific/Honolulu'),
+  );
+});
+
+// ---------- 规则描述（从 RULES 生成，页面不硬编码） ----------
+
+test('describeRules 按 RULES 生成星期、时间段、时区与休息日描述', () => {
+  assert.deepEqual(describeRules(), {
+    weekdays: '周一至周五',
+    timeRange: '14:00–18:00',
+    utcOffset: 'UTC+8',
+    restNote: '周末全天非高峰',
+  });
+});
+
+test('describeRules 对自定义规则也成立（非整点、非连续星期、非整时区）', () => {
+  assert.deepEqual(
+    describeRules({
+      tzOffsetMinutes: 330,
+      peakDays: [1, 3, 5],
+      peakStartMinutes: 540,
+      peakEndMinutes: 1020,
+    }),
+    {
+      weekdays: '周一、周三、周五',
+      timeRange: '09:00–17:00',
+      utcOffset: 'UTC+5:30',
+      restNote: '其余时间非高峰',
+    },
+  );
+  assert.equal(
+    describeRules({ tzOffsetMinutes: -300, peakDays: [2, 3], peakStartMinutes: 0, peakEndMinutes: 60 }).weekdays,
+    '周二至周三',
   );
 });

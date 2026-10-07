@@ -1,12 +1,13 @@
 /**
  * 页面主逻辑：假时钟 + 每秒刷新。
- * 高峰判断一律来自 ./peak.js（getStatus），本文件只负责时钟与展示，
+ * 高峰判断一律来自 ./peak.js（getStatus）与 RULES，本文件只负责时钟与展示，
  * 不重复任何高峰规则。纯格式化助手在 ./format.js。
  */
 import { getStatus } from './peak.js';
 import {
+  describeRules,
   formatDuration,
-  formatNextSwitch,
+  formatNextSwitchParts,
   remainingSeconds,
 } from './format.js';
 
@@ -19,6 +20,8 @@ const countdownValueEl = document.querySelector(
 );
 const nextSwitchEl = document.querySelector('[data-testid="next-switch"]');
 const clockNoteEl = document.getElementById('clock-note');
+const subtitleEl = document.getElementById('subtitle');
+const ruleNoteEl = document.getElementById('rule-note');
 
 const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
@@ -55,6 +58,31 @@ function readFakeClockParam() {
   showNote(`测试时钟：从 ${describeInstant(parsed)} 开始计时`);
 }
 
+function span(className, text) {
+  const el = document.createElement('span');
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+/**
+ * 下一次切换：本地时间、时区名括号、北京时间各为一个整体，
+ * 只允许在它们之间换行；拼起来的 textContent 与 formatNextSwitch 一致。
+ */
+function renderNextSwitch(nextSwitch) {
+  const { localWhen, localZone, beijing } = formatNextSwitchParts(
+    nextSwitch,
+    localTimeZone,
+  );
+  nextSwitchEl.replaceChildren(
+    span('next-when', localWhen),
+    document.createElement('wbr'), // 日期/时间 与 时区名 之间的换行点（无文本）
+    span('next-zone', localZone),
+    document.createTextNode('· '),
+    span('next-beijing', beijing),
+  );
+}
+
 function render() {
   const status = getStatus(pageNow());
 
@@ -65,11 +93,19 @@ function render() {
   document.body.classList.toggle('is-offpeak', !status.peak);
 
   countdownLabelEl.textContent = status.peak ? '距离高峰结束' : '距离高峰开始';
-  countdownValueEl.textContent = formatDuration(
-    remainingSeconds(status.msUntilSwitch),
-  );
+  const countdownText = formatDuration(remainingSeconds(status.msUntilSwitch));
+  countdownValueEl.textContent = countdownText;
+  // 带天数时字符串更长，缩小字号保证 375px 下仍在同一行
+  countdownValueEl.classList.toggle('has-days', countdownText.includes('天'));
 
-  nextSwitchEl.textContent = formatNextSwitch(status.nextSwitch, localTimeZone);
+  renderNextSwitch(status.nextSwitch);
+}
+
+/** 副标题与页脚的规则描述从 RULES 生成，HTML 里只留占位元素。 */
+function renderRuleText() {
+  const rule = describeRules();
+  subtitleEl.textContent = `GLM Coding Plan 高峰期为北京时间${rule.weekdays} ${rule.timeRange}`;
+  ruleNoteEl.textContent = `高峰规则以北京时间（${rule.utcOffset}）${rule.weekdays} ${rule.timeRange} 计算，${rule.restNote}。`;
 }
 
 let timerId = 0;
@@ -91,4 +127,5 @@ document.addEventListener('visibilitychange', () => {
 });
 
 readFakeClockParam();
+renderRuleText();
 tick();

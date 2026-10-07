@@ -12,7 +12,8 @@
     <main class="page">
       <header class="header">
         <h1>GLM 错峰钟</h1>
-        <p class="subtitle">GLM Coding Plan 高峰期为北京时间工作日 14:00–18:00</p>
+        <!-- 副标题与页脚的规则文字由 app.js 从 peak.js 的 RULES 生成，这里只留占位 -->
+        <p class="subtitle" id="subtitle"></p>
       </header>
 
       <!-- ?now=… 假时钟 / 无效参数提示（在 testid 元素之外） -->
@@ -35,7 +36,7 @@
       </section>
 
       <footer class="footer">
-        <p>高峰规则以北京时间（UTC+8）周一至周五 14:00–18:00 计算，周末全天非高峰。</p>
+        <p id="rule-note"></p>
         <noscript><p>需要启用 JavaScript 才能显示实时状态。</p></noscript>
       </footer>
     </main>
