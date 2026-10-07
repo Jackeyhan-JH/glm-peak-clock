@@ -35,6 +35,22 @@
         <p class="next-switch" data-testid="next-switch">…</p>
       </section>
 
+      <!-- 一周时间表 + 时区选择；行内容由 app.js 生成 -->
+      <section class="card" aria-label="一周时间表">
+        <div class="week-head">
+          <h2 class="card-title">一周时间表</h2>
+          <div class="tz-picker">
+            <label class="tz-label" for="tz-select">时区</label>
+            <select
+              class="tz-select"
+              id="tz-select"
+              data-testid="tz-select"
+            ></select>
+          </div>
+        </div>
+        <div class="week-table" data-testid="week-table"></div>
+      </section>
+
       <footer class="footer">
         <p id="rule-note"></p>
         <noscript><p>需要启用 JavaScript 才能显示实时状态。</p></noscript>

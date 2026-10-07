@@ -1,7 +1,8 @@
 /**
- * 页面主逻辑：假时钟 + 每秒刷新。
- * 高峰判断一律来自 ./peak.js（getStatus）与 RULES，本文件只负责时钟与展示，
- * 不重复任何高峰规则。纯格式化助手在 ./format.js。
+ * 页面主逻辑：假时钟 + 每秒刷新 + 时区选择下的一周时间表。
+ * 高峰判断一律来自 ./peak.js（getStatus）与 RULES，本文件只负责时钟、
+ * 时区选择与展示，不重复任何高峰规则。纯格式化助手在 ./format.js 与
+ * ./schedule.js。
  */
 import { getStatus } from './peak.js';
 import {
@@ -10,6 +11,7 @@ import {
   formatNextSwitchParts,
   remainingSeconds,
 } from './format.js';
+import { formatSegments, isValidTimeZone, weekSchedule } from './schedule.js';
 
 const statusEl = document.querySelector('[data-testid="status"]');
 const countdownLabelEl = document.querySelector(
@@ -19,11 +21,29 @@ const countdownValueEl = document.querySelector(
   '[data-testid="countdown-value"]',
 );
 const nextSwitchEl = document.querySelector('[data-testid="next-switch"]');
+const weekTableEl = document.querySelector('[data-testid="week-table"]');
+const tzSelectEl = document.querySelector('[data-testid="tz-select"]');
 const clockNoteEl = document.getElementById('clock-note');
 const subtitleEl = document.getElementById('subtitle');
 const ruleNoteEl = document.getElementById('rule-note');
 
-const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+/** 当前生效的时区与它是否来自显式选择（?tz=、localStorage 或下拉框），见 resolveTimeZone。 */
+let activeTimeZone = browserTimeZone;
+let tzIsExplicit = false;
+
+/** 下拉框里的常用时区（第一个「浏览器时区」选项动态生成，值是空串）。 */
+const TZ_CHOICES = [
+  'Asia/Shanghai',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Asia/Tokyo',
+  'Pacific/Honolulu',
+];
+
+const TZ_STORAGE_KEY = 'glm-peak-clock:tz';
 
 /** ?now=<ISO> 有效时为「解析时刻 - 加载时刻」，页面时钟 = 真实时间 + 偏移，仍每秒前进。 */
 let clockOffsetMs = 0;
@@ -40,8 +60,12 @@ function describeInstant(date) {
     .replace(/(?:\.\d+)?Z$/, ' UTC');
 }
 
+/** ?now / ?tz 的提示逐条累积，同一行显示。 */
+const paramNotes = [];
+
 function showNote(text) {
-  clockNoteEl.textContent = text;
+  paramNotes.push(text);
+  clockNoteEl.textContent = paramNotes.join(' ');
   clockNoteEl.hidden = false;
 }
 
@@ -58,6 +82,88 @@ function readFakeClockParam() {
   showNote(`测试时钟：从 ${describeInstant(parsed)} 开始计时`);
 }
 
+// ---------- 时区选择 ----------
+
+/** localStorage 在某些环境（隐私设置等）会抛错，读写都包一层。 */
+function readStoredTimeZone() {
+  try {
+    return window.localStorage.getItem(TZ_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** value 为空串（=浏览器时区）时删除键，否则记住所选时区。 */
+function persistTimeZone(value) {
+  try {
+    if (value === '') window.localStorage.removeItem(TZ_STORAGE_KEY);
+    else window.localStorage.setItem(TZ_STORAGE_KEY, value);
+  } catch {
+    // 存不进去就算了，本次会话内仍生效
+  }
+}
+
+/**
+ * 时区解析顺序：有效的 ?tz= > 有效的 localStorage > 浏览器时区。
+ * 无效的 ?tz= 给一条提示后继续回退；无效的存储值静默忽略。
+ * @returns {{ timeZone: string, explicit: boolean }}
+ *   explicit - 是否来自显式选择（即使恰好等于浏览器时区也算）。
+ */
+function resolveTimeZone() {
+  const raw = new URLSearchParams(window.location.search).get('tz');
+  if (raw !== null && raw !== '') {
+    if (isValidTimeZone(raw)) return { timeZone: raw, explicit: true };
+    showNote(`已忽略无效的 ?tz 参数（${raw}）`);
+  }
+  const stored = readStoredTimeZone();
+  if (stored && isValidTimeZone(stored)) {
+    return { timeZone: stored, explicit: true };
+  }
+  return { timeZone: browserTimeZone, explicit: false };
+}
+
+/** 填充时区下拉框并选中当前生效项（不在常用列表里时追加一个选项）。 */
+function buildTimeZoneOptions() {
+  const options = [
+    { value: '', label: `浏览器时区（${browserTimeZone}）` },
+    ...TZ_CHOICES.map((tz) => ({ value: tz, label: tz })),
+  ];
+  if (tzIsExplicit && !TZ_CHOICES.includes(activeTimeZone)) {
+    options.push({ value: activeTimeZone, label: activeTimeZone });
+  }
+
+  tzSelectEl.replaceChildren(
+    ...options.map(({ value, label }) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }),
+  );
+  // 显式选择的时区（含存储/参数恰好等于浏览器时区）选中同名选项；
+  // 只有没有覆盖、或用户主动选了“浏览器时区”时才选空串那一项。
+  tzSelectEl.value = tzIsExplicit ? activeTimeZone : '';
+}
+
+/** 去掉 URL 里的 tz 参数（保留 now 等），让刷新后以 localStorage 为准。 */
+function stripTimeZoneParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('tz')) return;
+  url.searchParams.delete('tz');
+  window.history.replaceState(null, '', url);
+}
+
+tzSelectEl.addEventListener('change', () => {
+  const { value } = tzSelectEl;
+  activeTimeZone = value === '' ? browserTimeZone : value;
+  tzIsExplicit = value !== '';
+  persistTimeZone(value);
+  stripTimeZoneParam();
+  render(); // 不刷新页面，立即重渲染时间表与「下一次切换」
+});
+
+// ---------- 渲染 ----------
+
 function span(className, text) {
   const el = document.createElement('span');
   el.className = className;
@@ -72,7 +178,7 @@ function span(className, text) {
 function renderNextSwitch(nextSwitch) {
   const { localWhen, localZone, beijing } = formatNextSwitchParts(
     nextSwitch,
-    localTimeZone,
+    activeTimeZone,
   );
   nextSwitchEl.replaceChildren(
     span('next-when', localWhen),
@@ -81,6 +187,70 @@ function renderNextSwitch(nextSwitch) {
     document.createTextNode('· '),
     span('next-beijing', beijing),
   );
+}
+
+/** 一周时间表的一行；「当前」徽标放在时段格子之外，保证其 textContent 精确。 */
+function buildWeekRow(day) {
+  const row = document.createElement('div');
+  row.className = 'week-row';
+  row.dataset.testid = 'week-row';
+  row.dataset.date = day.date;
+  if (day.isToday) {
+    row.classList.add('is-today');
+    row.dataset.today = 'true';
+    row.setAttribute('aria-current', 'date');
+  }
+  row.append(span('week-date', `${day.month}月${day.day}日 ${day.weekdayLabel}`));
+
+  const hoursEl = document.createElement('span');
+  hoursEl.className = 'week-hours';
+  hoursEl.dataset.testid = 'week-hours';
+  if (day.segments.length === 0) {
+    hoursEl.classList.add('is-empty');
+    hoursEl.textContent = '全天非高峰';
+  } else {
+    day.segments.forEach((segment, index) => {
+      if (index > 0) hoursEl.append(document.createTextNode('、'));
+      const segmentEl = span(
+        'week-segment',
+        `${segment.startLabel}–${segment.endLabel}`,
+      );
+      segmentEl.dataset.testid = 'week-segment';
+      if (segment.current) {
+        segmentEl.classList.add('is-current');
+        segmentEl.dataset.current = 'true';
+      }
+      hoursEl.append(segmentEl);
+    });
+  }
+  row.append(hoursEl);
+
+  if (day.segments.some((segment) => segment.current)) {
+    row.append(span('week-badge', '当前'));
+  }
+  return row;
+}
+
+/**
+ * 每拍重算一周时间表（所选时区的“今天”会随假时钟翻日），
+ * 但只在日期、时段文案或当前段变化时才动 DOM。
+ */
+let weekSignature = '';
+
+function renderWeekTable() {
+  const days = weekSchedule(pageNow(), activeTimeZone);
+  const signature = [
+    activeTimeZone,
+    ...days.map(
+      (day) =>
+        `${day.date}:${formatSegments(day.segments)}:${day.segments.some(
+          (segment) => segment.current,
+        )}`,
+    ),
+  ].join('|');
+  if (signature === weekSignature) return;
+  weekSignature = signature;
+  weekTableEl.replaceChildren(...days.map(buildWeekRow));
 }
 
 function render() {
@@ -99,6 +269,7 @@ function render() {
   countdownValueEl.classList.toggle('has-days', countdownText.includes('天'));
 
   renderNextSwitch(status.nextSwitch);
+  renderWeekTable();
 }
 
 /** 副标题与页脚的规则描述从 RULES 生成，HTML 里只留占位元素。 */
@@ -127,5 +298,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 readFakeClockParam();
+const resolvedTimeZone = resolveTimeZone();
+activeTimeZone = resolvedTimeZone.timeZone;
+tzIsExplicit = resolvedTimeZone.explicit;
+buildTimeZoneOptions();
 renderRuleText();
 tick();

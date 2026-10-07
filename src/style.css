@@ -16,6 +16,7 @@
   --offpeak-text: #1a7f37;
   --offpeak-bg: #ecf8ef;
   --offpeak-border: #b5dfbf;
+  --today-bg: #eef4fb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +33,7 @@
     --offpeak-text: #4ac063;
     --offpeak-bg: #0d2013;
     --offpeak-border: #1f4529;
+    --today-bg: #16233a;
   }
 }
 
@@ -201,6 +203,119 @@ body.is-offpeak .countdown-value {
 
 .next-zone {
   overflow-wrap: anywhere;
+}
+
+/* ---- 一周时间表 + 时区选择 ---- */
+
+.week-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.week-head .card-title {
+  margin: 0;
+}
+
+.tz-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0; /* 允许在窄屏里收缩 */
+}
+
+.tz-label {
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.tz-select {
+  max-width: 100%; /* 时区名再长也不许撑破卡片 */
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.week-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* 每行三列：日期（定宽，各行对齐）/ 时段（弹性）/ 徽标（仅当前行）。
+   列宽用 minmax(7.5em, max-content)：最宽的日期（“12月31日 周四”）也在
+   7.5em 之内，所以每行都取到相同的 7.5em，时段列从同一 x 起步。 */
+.week-row {
+  display: grid;
+  grid-template-columns: minmax(7.5em, max-content) 1fr auto;
+  column-gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.45rem 0.6rem;
+}
+
+.week-row + .week-row {
+  border-top: 1px solid var(--border);
+}
+
+.week-row.is-today {
+  background: var(--today-bg);
+}
+
+.week-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.week-row.is-today .week-date {
+  font-weight: 700;
+}
+
+/* 只允许在段与段的“、”之间换行；单个时段整体不断行 */
+.week-hours {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-segment {
+  white-space: nowrap;
+}
+
+.week-hours.is-empty {
+  color: var(--muted);
+}
+
+/* 当前正处于的那一段高峰：沿用高峰语义色，醒目但不另造颜色 */
+.week-segment.is-current {
+  color: var(--peak-text);
+  font-weight: 700;
+  background: var(--peak-bg);
+  border: 1px solid var(--peak-border);
+  border-radius: 6px;
+  padding: 0 0.3em;
+}
+
+/* 「当前」徽标在时段格子之外（第三列），时段单元格的 textContent 保持纯文案 */
+.week-badge {
+  color: var(--peak-text);
+  background: var(--peak-bg);
+  border: 1px solid var(--peak-border);
+  border-radius: 999px;
+  padding: 0 0.5em;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 /* ---- 页脚 ---- */
