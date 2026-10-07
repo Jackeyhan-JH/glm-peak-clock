@@ -1,8 +1,8 @@
 /**
- * 页面主逻辑：假时钟 + 每秒刷新 + 时区选择下的一周时间表。
+ * 页面主逻辑：假时钟 + 每秒刷新 + 时区选择下的一周时间表 + 套餐倍率。
  * 高峰判断一律来自 ./peak.js（getStatus）与 RULES，本文件只负责时钟、
- * 时区选择与展示，不重复任何高峰规则。纯格式化助手在 ./format.js 与
- * ./schedule.js。
+ * 时区/套餐选择与展示，不重复任何高峰规则。纯格式化助手在 ./format.js 与
+ * ./schedule.js；套餐与倍率数据只在 ./plans.js。
  */
 import { getStatus } from './peak.js';
 import {
@@ -12,6 +12,15 @@ import {
   remainingSeconds,
 } from './format.js';
 import { formatSegments, isValidTimeZone, weekSchedule } from './schedule.js';
+import {
+  PLANS,
+  SOURCES,
+  DEFAULT_PLAN_ID,
+  currentMultiplier,
+  formatMultiplier,
+  getPlan,
+  savingPercent,
+} from './plans.js';
 
 const statusEl = document.querySelector('[data-testid="status"]');
 const countdownLabelEl = document.querySelector(
@@ -23,15 +32,23 @@ const countdownValueEl = document.querySelector(
 const nextSwitchEl = document.querySelector('[data-testid="next-switch"]');
 const weekTableEl = document.querySelector('[data-testid="week-table"]');
 const tzSelectEl = document.querySelector('[data-testid="tz-select"]');
+const multiplierEl = document.querySelector('[data-testid="multiplier"]');
+const savingEl = document.querySelector('[data-testid="saving"]');
+const planRatesEl = document.querySelector('[data-testid="plan-rates"]');
+const planSelectEl = document.querySelector('[data-testid="plan-select"]');
 const clockNoteEl = document.getElementById('clock-note');
 const subtitleEl = document.getElementById('subtitle');
 const ruleNoteEl = document.getElementById('rule-note');
+const sourceLinksEl = document.getElementById('source-links');
 
 const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 /** 当前生效的时区与它是否来自显式选择（?tz=、localStorage 或下拉框），见 resolveTimeZone。 */
 let activeTimeZone = browserTimeZone;
 let tzIsExplicit = false;
+
+/** 当前生效的套餐（默认取 plans.js 的 DEFAULT_PLAN_ID，可切换并记住，见 resolvePlan）。 */
+let activePlan;
 
 /** 下拉框里的常用时区（第一个「浏览器时区」选项动态生成，值是空串）。 */
 const TZ_CHOICES = [
@@ -44,6 +61,7 @@ const TZ_CHOICES = [
 ];
 
 const TZ_STORAGE_KEY = 'glm-peak-clock:tz';
+const PLAN_STORAGE_KEY = 'glm-peak-clock:plan';
 
 /** ?now=<ISO> 有效时为「解析时刻 - 加载时刻」，页面时钟 = 真实时间 + 偏移，仍每秒前进。 */
 let clockOffsetMs = 0;
@@ -162,6 +180,51 @@ tzSelectEl.addEventListener('change', () => {
   render(); // 不刷新页面，立即重渲染时间表与「下一次切换」
 });
 
+// ---------- 套餐选择 ----------
+
+/** localStorage 读写都包一层（与时区同理：隐私设置等环境会抛错）。 */
+function readStoredPlanId() {
+  try {
+    return window.localStorage.getItem(PLAN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistPlanId(id) {
+  try {
+    window.localStorage.setItem(PLAN_STORAGE_KEY, id);
+  } catch {
+    // 存不进去就算了，本次会话内仍生效
+  }
+}
+
+/** 套餐解析：localStorage 里 getPlan 认识的 id > 默认套餐；无效存储静默忽略。 */
+function resolvePlan() {
+  return getPlan(readStoredPlanId()) ?? getPlan(DEFAULT_PLAN_ID);
+}
+
+/** 用 plans.js 的 PLANS 填充下拉框并选中当前套餐（套餐名只写在 plans.js）。 */
+function buildPlanOptions() {
+  planSelectEl.replaceChildren(
+    ...PLANS.map((plan) => {
+      const option = document.createElement('option');
+      option.value = plan.id;
+      option.textContent = plan.name;
+      return option;
+    }),
+  );
+  planSelectEl.value = activePlan.id;
+}
+
+planSelectEl.addEventListener('change', () => {
+  const plan = getPlan(planSelectEl.value);
+  if (!plan) return; // 选项全部来自 PLANS，正常不会走到
+  activePlan = plan;
+  persistPlanId(plan.id);
+  render(); // 不刷新页面，立即重渲染倍率与节省
+});
+
 // ---------- 渲染 ----------
 
 function span(className, text) {
@@ -253,6 +316,20 @@ function renderWeekTable() {
   weekTableEl.replaceChildren(...days.map(buildWeekRow));
 }
 
+/**
+ * 「我的套餐」卡。倍率用与状态/倒计时同一拍的 status 计算，
+ * 高峰翻转时与倒计时同步变化；节省与两档倍率只随套餐变。
+ */
+function renderPlan(status) {
+  multiplierEl.textContent = `现在按 ${formatMultiplier(
+    currentMultiplier(activePlan, status.peak),
+  )}消耗`;
+  savingEl.textContent = `错峰用可省 ${savingPercent(activePlan)}%`;
+  planRatesEl.textContent = `高峰 ${formatMultiplier(
+    activePlan.peak,
+  )} · 非高峰 ${formatMultiplier(activePlan.offPeak)}`;
+}
+
 function render() {
   const status = getStatus(pageNow());
 
@@ -269,6 +346,7 @@ function render() {
   countdownValueEl.classList.toggle('has-days', countdownText.includes('天'));
 
   renderNextSwitch(status.nextSwitch);
+  renderPlan(status);
   renderWeekTable();
 }
 
@@ -277,6 +355,22 @@ function renderRuleText() {
   const rule = describeRules();
   subtitleEl.textContent = `GLM Coding Plan 高峰期为北京时间${rule.weekdays} ${rule.timeRange}`;
   ruleNoteEl.textContent = `高峰规则以北京时间（${rule.utcOffset}）${rule.weekdays} ${rule.timeRange} 计算，${rule.restNote}。`;
+}
+
+/** 页脚的官方文档链接：URL 与文字只存在 plans.js 的 SOURCES 一处。 */
+function renderSourceLinks() {
+  const nodes = [];
+  SOURCES.forEach((source, index) => {
+    if (index > 0) nodes.push(document.createTextNode(' · '));
+    const link = document.createElement('a');
+    link.dataset.testid = 'source-link';
+    link.href = source.url;
+    link.textContent = source.label;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    nodes.push(link);
+  });
+  sourceLinksEl.replaceChildren(...nodes);
 }
 
 let timerId = 0;
@@ -302,5 +396,8 @@ const resolvedTimeZone = resolveTimeZone();
 activeTimeZone = resolvedTimeZone.timeZone;
 tzIsExplicit = resolvedTimeZone.explicit;
 buildTimeZoneOptions();
+activePlan = resolvePlan();
+buildPlanOptions();
+renderSourceLinks();
 renderRuleText();
 tick();

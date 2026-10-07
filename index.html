@@ -35,6 +35,21 @@
         <p class="next-switch" data-testid="next-switch">…</p>
       </section>
 
+      <!-- 我的套餐：选项与倍率文案由 app.js 从 plans.js 生成，这里只留结构 -->
+      <section class="card" aria-label="我的套餐">
+        <div class="plan-head">
+          <label class="plan-label" for="plan-select">我的套餐</label>
+          <select
+            class="plan-select"
+            id="plan-select"
+            data-testid="plan-select"
+          ></select>
+        </div>
+        <p class="multiplier" data-testid="multiplier">…</p>
+        <p class="saving" data-testid="saving"></p>
+        <p class="plan-rates" data-testid="plan-rates"></p>
+      </section>
+
       <!-- 一周时间表 + 时区选择；行内容由 app.js 生成 -->
       <section class="card" aria-label="一周时间表">
         <div class="week-head">
@@ -53,6 +68,9 @@
 
       <footer class="footer">
         <p id="rule-note"></p>
+        <p data-testid="footer-note">规则以智谱官方公告为准；限时活动（如节假日全天按非高峰计）未计入。</p>
+        <!-- 链接的 URL 与文字来自 plans.js 的 SOURCES，由 app.js 生成 -->
+        <p class="footer-links" id="source-links"></p>
         <noscript><p>需要启用 JavaScript 才能显示实时状态。</p></noscript>
       </footer>
     </main>
